@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>컴시간 알리미</title>
+<style>
+  :root {
+    --ink: #1c2733;
+    --muted: #5b6876;
+    --paper: #f4f6f8;
+    --card: #ffffff;
+    --line: #d5dbe2;
+    --blue: #cfe4ff;
+    --blue-line: #4a8be0;
+    --accent: #1f5fbf;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e8edf2;
+      --muted: #9aa7b5;
+      --paper: #12181f;
+      --card: #1b232c;
+      --line: #2e3a46;
+      --blue: #1f3d63;
+      --blue-line: #6aa6f0;
+      --accent: #7db3f5;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 14px 40px; }
+  h1 { font-size: 1.5rem; margin: 8px 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 18px; font-size: .95rem; }
+
+  .tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tabs button {
+    flex: 1; padding: 11px 0; font: inherit; font-weight: 700;
+    border: 1.5px solid var(--line); border-radius: 10px;
+    background: var(--card); color: var(--muted); cursor: pointer;
+  }
+  .tabs button[aria-pressed="true"] {
+    border-color: var(--accent); color: var(--accent);
+  }
+  .tabs button:focus-visible, .row button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 3px solid var(--blue-line); outline-offset: 2px;
+  }
+
+  .row { display: flex; gap: 8px; margin-bottom: 16px; }
+  .row input, .row select {
+    flex: 1; min-width: 0; padding: 11px 12px; font: inherit;
+    border: 1.5px solid var(--line); border-radius: 10px;
+    background: var(--card); color: var(--ink);
+  }
+  .row button {
+    padding: 11px 16px; font: inherit; font-weight: 700;
+    border: 0; border-radius: 10px; background: var(--accent); color: #fff; cursor: pointer;
+  }
+  .hidden { display: none; }
+
+  #msg { min-height: 1.5em; margin: 0 0 10px; color: var(--muted); }
+  #msg.error { color: #c0392b; }
+
+  .wrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; table-layout: fixed; min-width: 420px; }
+  th, td { border: 1px solid var(--line); text-align: center; padding: 6px 2px; font-size: .9rem; }
+  th { background: var(--paper); font-weight: 700; padding: 10px 2px; }
+  th.period { width: 44px; }
+  td { height: 64px; vertical-align: middle; }
+  td.lesson { background: var(--blue); box-shadow: inset 3px 0 0 var(--blue-line); }
+  td .top { font-weight: 700; }
+  td .bottom { color: var(--muted); font-size: .8rem; }
+  td.lesson .bottom { color: var(--ink); opacity: .75; }
+  .empty { text-align: center; color: var(--muted); padding: 28px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>컴시간 알리미</h1>
+  <p class="sub">교사 이름이나 학급을 고르면 주간 시간표가 나와요.</p>
+
+  <div class="tabs" role="group" aria-label="보기 방식">
+    <button type="button" id="tabTeacher" aria-pressed="true">교사별</button>
+    <button type="button" id="tabClass" aria-pressed="false">학급별</button>
+  </div>
+
+  <div class="row" id="teacherRow">
+    <input id="teacherInput" list="teacherList" placeholder="교사 이름 (예: 심가연)" autocomplete="off">
+    <datalist id="teacherList"></datalist>
+    <button type="button" id="btnTeacher">시간표 보기</button>
+  </div>
+
+  <div class="row hidden" id="classRow">
+    <select id="classSelect" aria-label="학급 선택"></select>
+    <button type="button" id="btnClass">시간표 보기</button>
+  </div>
+
+  <p id="msg" role="status"></p>
+
+  <div class="wrap">
+    <table id="grid" aria-label="주간 시간표">
+      <thead><tr><th class="period">교시</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+  // 가짜 전체 시간표 데이터: 요일,교시,학급,과목,교사
+  const RAW = [
+    "월,1,1-1반,정보,배준영",
+    "월,2,1-1반,국어,김서연",
+    "월,3,1-1반,영어,최유진",
+    "월,4,1-1반,기술가정,신예린",
+    "월,5,1-1반,수학,심가연",
+    "월,6,1-1반,국어,김서연",
+    "화,1,1-1반,체육,강태우",
+    "화,2,1-1반,영어,최유진",
+    "화,3,1-1반,과학,한지민",
+    "화,4,1-1반,과학,한지민",
+    "화,5,1-1반,창체,김서연",
+    "화,6,1-1반,영어,최유진",
+    "수,1,1-1반,체육,강태우",
+    "수,2,1-1반,사회,윤소희",
+    "수,3,1-1반,기술가정,신예린",
+    "수,4,1-1반,수학,심가연",
+    "수,5,1-1반,체육,강태우",
+    "수,6,1-1반,국어,김서연",
+    "목,1,1-1반,미술,임하늘",
+    "목,2,1-1반,음악,조은채",
+    "목,3,1-1반,과학,한지민",
+    "목,4,1-1반,영어,최유진",
+    "목,5,1-1반,수학,심가연",
+    "목,6,1-1반,사회,윤소희",
+    "금,1,1-1반,도덕,문성호",
+    "금,2,1-1반,수학,심가연",
+    "금,3,1-1반,국어,김서연",
+    "금,4,1-1반,과학,한지민",
+    "금,5,1-1반,창체,김서연",
+    "금,6,1-1반,사회,윤소희",
+    "월,1,1-2반,체육,강태우",
+    "월,2,1-2반,영어,최유진",
+    "월,3,1-2반,미술,임하늘",
+    "월,4,1-2반,수학,심가연",
+    "월,5,1-2반,음악,조은채",
+    "월,6,1-2반,영어,최유진",
+    "화,1,1-2반,국어,김서연",
+    "화,2,1-2반,수학,심가연",
+    "화,3,1-2반,사회,윤소희",
+    "화,4,1-2반,수학,심가연",
+    "화,5,1-2반,과학,한지민",
+    "화,6,1-2반,국어,김서연",
+    "수,1,1-2반,사회,윤소희",
+    "수,2,1-2반,과학,한지민",
+    "수,3,1-2반,정보,배준영",
+    "수,4,1-2반,사회,윤소희",
+    "수,5,1-2반,국어,김서연",
+    "수,6,1-2반,영어,최유진",
+    "목,1,1-2반,과학,한지민",
+    "목,2,1-2반,창체,심가연",
+    "목,3,1-2반,창체,심가연",
+    "목,4,1-2반,수학,심가연",
+    "목,5,1-2반,국어,김서연",
+    "목,6,1-2반,도덕,문성호",
+    "금,1,1-2반,과학,한지민",
+    "금,2,1-2반,영어,최유진",
+    "금,3,1-2반,기술가정,신예린",
+    "금,4,1-2반,체육,강태우",
+    "금,5,1-2반,체육,강태우",
+    "금,6,1-2반,기술가정,신예린",
+    "월,1,1-3반,국어,김서연",
+    "월,2,1-3반,과학,한지민",
+    "월,3,1-3반,국어,김서연",
+    "월,4,1-3반,사회,윤소희",
+    "월,5,1-3반,도덕,문성호",
+    "월,6,1-3반,수학,심가연",
+    "화,1,1-3반,영어,최유진",
+    "화,2,1-3반,음악,조은채",
+    "화,3,1-3반,국어,김서연",
+    "화,4,1-3반,체육,강태우",
+    "화,5,1-3반,창체,최유진",
+    "화,6,1-3반,과학,한지민",
+    "수,1,1-3반,과학,한지민",
+    "수,2,1-3반,수학,심가연",
+    "수,3,1-3반,영어,최유진",
+    "수,4,1-3반,국어,김서연",
+    "수,5,1-3반,창체,최유진",
+    "수,6,1-3반,체육,강태우",
+    "목,1,1-3반,정보,배준영",
+    "목,2,1-3반,과학,한지민",
+    "목,3,1-3반,사회,윤소희",
+    "목,4,1-3반,미술,임하늘",
+    "목,5,1-3반,기술가정,신예린",
+    "목,6,1-3반,수학,심가연",
+    "금,1,1-3반,영어,최유진",
+    "금,2,1-3반,기술가정,신예린",
+    "금,3,1-3반,수학,심가연",
+    "금,4,1-3반,사회,윤소희",
+    "금,5,1-3반,영어,최유진",
+    "금,6,1-3반,체육,강태우",
+    "월,1,2-1반,수학,박지훈",
+    "월,2,2-1반,수학,박지훈",
+    "월,3,2-1반,체육,강태우",
+    "월,4,2-1반,영어,정하준",
+    "월,5,2-1반,과학,오세훈",
+    "월,6,2-1반,과학,오세훈",
+    "화,1,2-1반,수학,박지훈",
+    "화,2,2-1반,과학,오세훈",
+    "화,3,2-1반,사회,장민석",
+    "화,4,2-1반,기술가정,신예린",
+    "화,5,2-1반,국어,이도윤",
+    "화,6,2-1반,영어,정하준",
+    "수,1,2-1반,정보,배준영",
+    "수,2,2-1반,국어,이도윤",
+    "수,3,2-1반,수학,박지훈",
+    "수,4,2-1반,체육,강태우",
+    "수,5,2-1반,음악,조은채",
+    "수,6,2-1반,국어,이도윤",
+    "목,1,2-1반,사회,장민석",
+    "목,2,2-1반,기술가정,신예린",
+    "목,3,2-1반,창체,이도윤",
+    "목,4,2-1반,사회,장민석",
+    "목,5,2-1반,체육,강태우",
+    "목,6,2-1반,영어,정하준",
+    "금,1,2-1반,국어,이도윤",
+    "금,2,2-1반,영어,정하준",
+    "금,3,2-1반,과학,오세훈",
+    "금,4,2-1반,미술,임하늘",
+    "금,5,2-1반,창체,이도윤",
+    "금,6,2-1반,도덕,문성호",
+    "월,1,2-2반,기술가정,신예린",
+    "월,2,2-2반,과학,오세훈",
+    "월,3,2-2반,수학,박지훈",
+    "월,4,2-2반,미술,임하늘",
+    "월,5,2-2반,사회,장민석",
+    "월,6,2-2반,국어,이도윤",
+    "화,1,2-2반,사회,장민석",
+    "화,2,2-2반,체육,강태우",
+    "화,3,2-2반,체육,강태우",
+    "화,4,2-2반,국어,이도윤",
+    "화,5,2-2반,수학,박지훈",
+    "화,6,2-2반,국어,이도윤",
+    "수,1,2-2반,과학,오세훈",
+    "수,2,2-2반,창체,박지훈",
+    "수,3,2-2반,사회,장민석",
+    "수,4,2-2반,과학,오세훈",
+    "수,5,2-2반,영어,정하준",
+    "수,6,2-2반,영어,정하준",
+    "목,1,2-2반,영어,정하준",
+    "목,2,2-2반,도덕,문성호",
+    "목,3,2-2반,체육,강태우",
+    "목,4,2-2반,과학,오세훈",
+    "목,5,2-2반,정보,배준영",
+    "목,6,2-2반,수학,박지훈",
+    "금,1,2-2반,영어,정하준",
+    "금,2,2-2반,수학,박지훈",
+    "금,3,2-2반,음악,조은채",
+    "금,4,2-2반,기술가정,신예린",
+    "금,5,2-2반,창체,박지훈",
+    "금,6,2-2반,국어,이도윤",
+    "월,1,2-3반,국어,이도윤",
+    "월,2,2-3반,정보,배준영",
+    "월,3,2-3반,과학,오세훈",
+    "월,4,2-3반,수학,박지훈",
+    "월,5,2-3반,영어,정하준",
+    "월,6,2-3반,체육,강태우",
+    "화,1,2-3반,국어,이도윤",
+    "화,2,2-3반,영어,정하준",
+    "화,3,2-3반,수학,박지훈",
+    "화,4,2-3반,영어,정하준",
+    "화,5,2-3반,과학,오세훈",
+    "화,6,2-3반,과학,오세훈",
+    "수,1,2-3반,국어,이도윤",
+    "수,2,2-3반,도덕,문성호",
+    "수,3,2-3반,영어,정하준",
+    "수,4,2-3반,기술가정,신예린",
+    "수,5,2-3반,미술,임하늘",
+    "수,6,2-3반,사회,장민석",
+    "목,1,2-3반,체육,강태우",
+    "목,2,2-3반,국어,이도윤",
+    "목,3,2-3반,수학,박지훈",
+    "목,4,2-3반,창체,정하준",
+    "목,5,2-3반,사회,장민석",
+    "목,6,2-3반,음악,조은채",
+    "금,1,2-3반,기술가정,신예린",
+    "금,2,2-3반,체육,강태우",
+    "금,3,2-3반,수학,박지훈",
+    "금,4,2-3반,사회,장민석",
+    "금,5,2-3반,과학,오세훈",
+    "금,6,2-3반,창체,정하준"
+  ];
+
+  const DAYS = ["월", "화", "수", "목", "금"];
+  const PERIODS = 6;
+  const lessons = RAW.map(line => {
+    const [day, period, cls, subject, teacher] = line.split(",");
+    return { day, period: Number(period), cls, subject, teacher };
+  });
+
+  const teachers = [...new Set(lessons.map(l => l.teacher))].sort((a, b) => a.localeCompare(b, "ko"));
+  const classes = [...new Set(lessons.map(l => l.cls))].sort();
+
+  const $ = id => document.getElementById(id);
+  const tbody = $("grid").querySelector("tbody");
+
+  // 처음 화면: 빈 표 만들기
+  function drawEmpty() {
+    tbody.innerHTML = "";
+    for (let p = 1; p <= PERIODS; p++) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<th class="period">${p}</th>` + DAYS.map(() => "<td></td>").join("");
+      tbody.appendChild(tr);
+    }
+  }
+
+  function fill(list, topKey, bottomKey, highlight) {
+    drawEmpty();
+    list.forEach(l => {
+      const col = DAYS.indexOf(l.day) + 1;
+      const td = tbody.rows[l.period - 1].cells[col];
+      td.innerHTML = `<div class="top">${l[topKey]}</div><div class="bottom">${l[bottomKey]}</div>`;
+      if (highlight) td.classList.add("lesson");
+    });
+  }
+
+  function say(text, isError) {
+    $("msg").textContent = text;
+    $("msg").className = isError ? "error" : "";
+  }
+
+  function showTeacher() {
+    const name = $("teacherInput").value.trim();
+    if (!name) { say("교사 이름을 입력해 주세요.", true); drawEmpty(); return; }
+    const mine = lessons.filter(l => l.teacher === name);
+    if (mine.length === 0) { say(`'${name}' 선생님의 수업을 찾을 수 없어요. 이름을 확인해 주세요.`, true); drawEmpty(); return; }
+    say(`${name} 선생님 · 주 ${mine.length}시간`);
+    fill(mine, "cls", "subject", true);
+  }
+
+  function showClass() {
+    const cls = $("classSelect").value;
+    const mine = lessons.filter(l => l.cls === cls);
+    say(`${cls} 시간표`);
+    fill(mine, "subject", "teacher", false);
+  }
+
+  function setTab(which) {
+    const isTeacher = which === "teacher";
+    $("tabTeacher").setAttribute("aria-pressed", isTeacher);
+    $("tabClass").setAttribute("aria-pressed", !isTeacher);
+    $("teacherRow").classList.toggle("hidden", !isTeacher);
+    $("classRow").classList.toggle("hidden", isTeacher);
+    say("");
+    drawEmpty();
+  }
+
+  // 화면 연결
+  $("teacherList").innerHTML = teachers.map(t => `<option value="${t}">`).join("");
+  $("classSelect").innerHTML = classes.map(c => `<option>${c}</option>`).join("");
+  $("tabTeacher").addEventListener("click", () => setTab("teacher"));
+  $("tabClass").addEventListener("click", () => setTab("class"));
+  $("btnTeacher").addEventListener("click", showTeacher);
+  $("btnClass").addEventListener("click", showClass);
+  $("teacherInput").addEventListener("keydown", e => { if (e.key === "Enter") showTeacher(); });
+
+  drawEmpty();
+</script>
+</body>
+</html>
